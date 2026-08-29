@@ -37,6 +37,16 @@ x-ac-db-all: &ac-db-all
 x-ac-world-config: &ac-world-config
   AC_REALM_ID: ${AC_REALM_ID:-1}
 
+  # Module .conf files are deliberately absent, so every key we do not set
+  # logs "Missing property ..." at startup — well over a hundred lines for
+  # mod-playerbots alone, each printed twice, burying anything real. This
+  # skips that one severity. Values are unaffected: they were already the
+  # compiled defaults the warnings quote. Critical options (RealmID, the
+  # database DSNs) keep Fatal, missing *files* still log, and every key we do
+  # set still prints "Found config value ... from environment variable", which
+  # is the line that actually proves our env is being applied.
+  AC_CONFIG_POLICY: ${AC_CONFIG_POLICY:-missing_option=skip}
+
   # Server threading. Stock AzerothCore ships MapUpdate.Threads = 1, which is
   # the single biggest CPU limit once bots roam the whole world; the module's
   # guidance is 4-6, matched to available cores. Raise with the CT's core

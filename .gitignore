@@ -129,3 +129,6 @@ __pycache__/
 # ==================
 .cache
 compile_commands.json
+
+# Modules we run (see CLAUDE.md)
+!/modules/mod-autobalance

@@ -29,8 +29,9 @@ up once.
    editing the files — that keeps upstream merges conflict-free.
 
 3. **First build.** Push to `master`, or Actions → *build-images* → **Run
-   workflow**. Expect roughly an hour. Green means four packages appear under
-   the account's Packages.
+   workflow**. The first green run took 21 minutes on a stock `ubuntu-latest`
+   runner (no cache), so the ~1 h budget has room. Green means four packages
+   appear under the account's Packages.
 
 4. **Make the packages public.** Each package → *Package settings* → *Danger
    Zone* → **Change visibility → Public**. Without this the Dokploy host needs a
@@ -59,33 +60,150 @@ default (`DOCKER_SOAP_BIND_IP`), MySQL to loopback on port 13306.
 
 ## 3. One-time: the Dokploy service
 
-1. Project → **Create Service → Compose**.
-2. *Provider*: **Git**. Repository: this fork. Branch: `master`.
-3. *Compose Path*: `deploy/docker-compose.yml`.
-4. *Compose Type*: **Docker Compose** — not Stack. Stack mode is Swarm, and
-   this file uses `depends_on: condition:` which Swarm ignores.
-5. *Environment*: paste a filled-in copy of [`.env.example`](.env.example).
-   Everything marked `TBD` is a decision:
-   - `DOCKER_DB_ROOT_PASSWORD` — generate one, store it in your password manager.
-   - `REALM_ADDRESS` — the public IP or DNS name friends type into
-     `realmlist.wtf`.
-   - `REALM_LOCAL_ADDRESS` / `REALM_LOCAL_SUBNET_MASK` — the LXC's LAN IP and
-     the LAN netmask, so clients on the LAN skip the router hairpin.
-   Do **not** put `DOKPLOY_*` or `BACKUP_*` here; those belong to the ops
-   scripts on the host and would otherwise end up inside every container.
-6. **Deploy.**
+Everything below was checked against Dokploy's own source (v0.30.2). The
+defaults matter more than usual here: a couple of the toggles rewrite the
+compose file before it is deployed, changing resource names and the network
+layout this runbook and `backup.sh` depend on.
 
-### What the first deploy does
+### 3.1 Before you start
 
-`ac-database` comes up → `ac-db-import` creates the three databases and applies
-every SQL update (this takes a few minutes on an empty DB) → `ac-realmlist-init`
-writes the realm addresses → `ac-client-data-init` downloads maps, vmaps, mmaps
-and DBC into the `ac-client-data` volume (several GB, expect 10–20 minutes on
-the first run only) → `ac-authserver` and `ac-worldserver` start.
+The LXC must be able to `docker pull` the four images. Either make the packages
+public (§1.4), or keep them private and `docker login ghcr.io` **as root** on
+the CT — Dokploy writes `DOCKER_CONFIG=/root/.docker` into the environment it
+deploys with, so root's credentials are the ones compose will use. Public is one
+less thing to rotate.
+
+### 3.2 Create the service
+
+Project → **Create Service → Compose**.
+
+| Field | Value | Why |
+|---|---|---|
+| Name | `azerothcore` | becomes `appName`: the compose project name, the volume prefix, and the checkout path `/etc/dokploy/compose/azerothcore/code` |
+| Provider | **Git** | Dokploy re-clones on every deploy |
+| Repository / Branch | this fork / `master` | `master` is what CI builds images from |
+| Compose Path | `deploy/docker-compose.yml` | relative to the repo root |
+| Compose Type | **Docker Compose** | Stack is Swarm: it ignores `depends_on: condition:`, so the one-shots would race the servers |
+
+Leave these **off** — all of them are off by default:
+
+- **Isolated Deployment** — rewrites the compose file to add an external network
+  named after the app to every service, creates it, and connects Traefik to it.
+  We already define `ac-network`, and Traefik has no business in a raw-TCP
+  stack. Its companion toggle suffixes every named volume, which would orphan
+  the database if it were ever flipped after the first deploy.
+- **Randomize / name suffix** — appends a `COMPOSE_PREFIX` suffix to resource
+  names. Nothing here collides; keeping names literal is what makes
+  `docker attach ac-worldserver` work.
+- **Enable Submodules** — `deploy/docker-compose.yml` needs nothing from
+  `modules/`; the module code is already baked into the images. Off keeps the
+  clone small.
+- **Auto Deploy / webhook** — GitHub cannot reach this host (§5 does the
+  pulling instead).
+
+### 3.3 Environment
+
+Paste a filled-in copy of [`.env.example`](.env.example) into the Environment
+tab. What Dokploy does with it: writes
+`/etc/dokploy/compose/<appName>/code/deploy/.env`, prepending `APP_NAME`,
+`COMPOSE_PROJECT_NAME=<appName>` and `DOCKER_CONFIG=/root/.docker`. Compose then
+interpolates every `${...}` in our file from it.
+
+Those variables are **not** injected into the containers automatically — only
+the keys listed under a service's `environment:` in
+`deploy/docker-compose.yml` reach the server. Adding `AC_SOMETHING` in Dokploy
+alone does nothing; add it to the compose file too.
+
+The four decisions marked `TBD`:
+
+- `DOCKER_DB_ROOT_PASSWORD` — generate one, store it in your password manager,
+  and put the same value in `/etc/azerothcore/ops.env` for `backup.sh` (§5).
+- `REALM_ADDRESS` — the public IP or DNS name friends put in `realmlist.wtf`.
+- `REALM_LOCAL_ADDRESS` — the LXC's LAN IP, so LAN clients skip the router
+  hairpin.
+- `REALM_LOCAL_SUBNET_MASK` — the LAN netmask (`255.255.255.0` for a /24).
+
+Do **not** put `DOKPLOY_*` or `BACKUP_*` here; they belong to the ops scripts on
+the host, and anything in this tab is one `env_file:` away from every container.
+
+### 3.4 What Dokploy actually runs
+
+```sh
+cd /etc/dokploy/compose/<appName>/code
+docker compose -p <appName> -f ./deploy/docker-compose.yml up -d --build --remove-orphans
+```
+
+- `--build` is Dokploy's, not ours, and is a no-op because no service in
+  `deploy/docker-compose.yml` has a `build:` section. Keep it that way — adding
+  one would make the LXC compile AzerothCore.
+- `-p <appName>` prefixes **volumes** (`azerothcore_ac-database`, …) but not our
+  containers: those are pinned with `container_name`, which is why
+  `docker attach ac-worldserver` and `backup.sh` work regardless of the project
+  name.
+
+**Version trap, worth knowing before you upgrade Dokploy.** The command above is
+what every release up to v0.30.2 runs. Dokploy's `canary` branch adds
+`--project-directory <code>` to it. Compose reads the `.env` file from the
+project directory, so with that flag it looks in `code/.env` while Dokploy still
+writes `code/deploy/.env` — every variable goes unset. The failure is immediate
+and loud, at deploy time:
+
+```
+error while interpolating services.ac-database.environment.MYSQL_ROOT_PASSWORD:
+required variable DOCKER_DB_ROOT_PASSWORD is missing a value
+```
+
+Fix without moving the file: put this in the service's **Command** field, which
+replaces the generated command (Dokploy prefixes it with `docker` and rejects
+shell metacharacters, so keep it to plain flags):
+
+```
+compose -f ./deploy/docker-compose.yml --env-file ./deploy/.env up -d --remove-orphans
+```
+
+The project name still comes from `COMPOSE_PROJECT_NAME` inside that env file,
+so nothing else changes.
+
+### 3.5 Deploy
+
+Hit **Deploy**. The first one does, in order:
+
+`ac-database` starts and passes its healthcheck → `ac-db-import` creates the
+three databases and applies every SQL update (a few minutes on an empty DB) →
+`ac-realmlist-init` writes the realm addresses → `ac-client-data-init` downloads
+maps, vmaps, mmaps and DBC into the `ac-client-data` volume (several GB, 10–20
+minutes, first run only) → `ac-authserver` and `ac-worldserver` start.
 
 Client data is **downloaded into a volume**, never baked into our images.
-Subsequent deploys re-run the one-shots; they exit immediately once the data is
-already present and the DB is current.
+Later deploys re-run the one-shots; they exit in seconds once the data is
+present and the DB is current.
+
+### 3.6 Verify
+
+```console
+$ docker ps --filter name=ac- --format 'table {{.Names}}\t{{.Status}}'
+$ docker logs --tail 30 ac-db-import          # "Database is up to date"
+$ docker logs --tail 5  ac-realmlist-init     # the addresses it wrote
+$ docker exec -e MYSQL_PWD="$DOCKER_DB_ROOT_PASSWORD" ac-database \
+    mysql -uroot -e "SELECT id,name,address,localAddress,port FROM acore_auth.realmlist;"
+$ docker volume ls | grep ac-             # <appName>_ac-{database,client-data,etc,logs}
+$ ss -lntp | grep -E '3724|8085'          # published on the CT
+```
+
+### 3.7 The composeId for `redeploy.sh`
+
+Open the service and read the last segment of the URL:
+
+```
+/dashboard/project/<projectId>/environment/<environmentId>/services/compose/<composeId>
+```
+
+Or ask the API, once you have a key (§5):
+
+```console
+$ curl -s -X POST http://localhost:3000/api/project.all -H "x-api-key: $DOKPLOY_API_KEY" \
+  | jq -r '.. | objects | select(.composeId?) | "\(.name) \(.composeId)"'
+```
 
 ---
 
@@ -133,18 +251,22 @@ Backup runs first so the newest dump predates whatever a new image might break.
 whose image changed, so the database stays up, but players are disconnected
 while the worldserver restarts.
 
-**Alternative to host cron:** Dokploy 0.22+ has a *Schedules* tab on the compose
-service that runs a cron'd command against the stack, with per-run logs in the
-UI. If the installed version has it, prefer it for the backup job — the logs are
-easier to find than `/var/log`. Point it at the same scripts.
+**Alternative to host cron:** Dokploy 0.22+ has *Schedule Jobs*, with per-run
+logs in the UI instead of `/var/log`. Four job types exist; the one that fits
+both scripts is **Server** (runs a script on the host), not **Compose** (which
+runs a command *inside* a service container and needs that container up). If you
+use it, keep `COMPOSE_PROJECT_NAME` untouched — Dokploy identifies the project by
+it.
 
 **`redeploy.sh` modes.** With `DOKPLOY_API_KEY` + `DOKPLOY_COMPOSE_ID` it POSTs
-to Dokploy's local API (`compose.redeploy`, falling back to `compose.deploy` on
-older builds, both `{"composeId": "..."}` with an `x-api-key` header). Confirm
-the endpoint against your installed version's API docs at
-`http://<dokploy>:3000/swagger`; if it has moved, set only `AC_COMPOSE_FILE` and
-the script falls back to a plain `docker compose pull && up -d` against
-Dokploy's checkout, which is equivalent for our purposes.
+to Dokploy's local API: `POST /api/compose.redeploy`, body `{"composeId": "..."}`,
+`x-api-key` header — as documented for v0.30.2, with `compose.deploy` as the
+fallback for older builds. The key comes from *Settings → Profile → API/CLI*.
+Your instance's own spec is at `http://<dokploy>:3000/api/openapi.json` if you
+want to diff it. If the endpoint ever moves, set only `AC_COMPOSE_FILE`
+(`/etc/dokploy/compose/<appName>/code/deploy/docker-compose.yml`) and the script
+falls back to a plain `docker compose pull && up -d` against Dokploy's own
+checkout, which is equivalent for our purposes.
 
 **`backup.sh`** dumps `acore_characters` and `acore_auth` only — `acore_world`
 is rebuilt from the repo by `ac-db-import` on every deploy. It reaches the
@@ -261,7 +383,9 @@ the `ac-etc` volume; add the variable to `deploy/docker-compose.yml` and
 `ac-realmlist-init` writes `DOCKER_WORLD_EXTERNAL_PORT` into `realmlist.port`.
 Change it in one place only.
 
-**Volumes** (`docker volume ls`): `ac-database` (the only irreplaceable one
-besides your dumps), `ac-client-data` (re-downloadable, several GB), `ac-etc`,
-`ac-logs`. Deleting `ac-etc` is safe — the entrypoint repopulates it from the
-image on next start.
+**Volumes** (`docker volume ls`) are prefixed with the compose project name, so
+they read `<appName>_ac-database` (the only irreplaceable one besides your
+dumps), `<appName>_ac-client-data` (re-downloadable, several GB),
+`<appName>_ac-etc` and `<appName>_ac-logs`. Renaming the Dokploy service changes
+`appName` and therefore orphans all four — the DB included. Deleting the `ac-etc`
+volume is safe: the entrypoint repopulates it from the image on next start.

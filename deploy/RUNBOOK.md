@@ -459,6 +459,16 @@ browsing the AH with it hangs on "Searching for items...".
 `mod-transmog` and `mod-solo-lfg` need nothing: their compiled defaults are
 already on.
 
+### Trying a change before it becomes `latest`
+
+*build-images* publishes `latest` only from `master`. Run it by hand on any
+branch (Actions → *build-images* → **Run workflow** → pick the branch) and it
+publishes just that branch's `sha-` tag. Pin that tag in Dokploy
+(`AC_IMAGE_TAG=sha-abc1234`), redeploy, and you are playing the branch while
+`latest` — and therefore the nightly redeploy — still points at the last green
+master build. Merge to master when you like it, set `AC_IMAGE_TAG` back to
+`latest`.
+
 ### Adding another module later
 
 One commit each, and CI is the gate:

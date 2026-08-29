@@ -79,20 +79,28 @@ jobs:
           docker image ls
           df -h /
 
+      # `latest` is what the running server pulls, so only master moves it.
+      # A workflow_dispatch build on a branch publishes just its sha- tag,
+      # which you can pin in Dokploy to try a change before promoting it.
       - name: Tag and push to GHCR
         env:
           OWNER: ${{ steps.img.outputs.owner }}
           TAG: ${{ steps.img.outputs.tag }}
+          PUSH_LATEST: ${{ github.ref == 'refs/heads/master' }}
         run: |
           set -euo pipefail
           for component in authserver worldserver db-import client-data; do
             src="acore/ac-wotlk-${component}:${TAG}"
             dst="ghcr.io/${OWNER}/ac-wotlk-${component}"
             docker tag "$src" "${dst}:${TAG}"
-            docker tag "$src" "${dst}:latest"
             docker push "${dst}:${TAG}"
-            docker push "${dst}:latest"
-            echo "pushed ${dst}:{${TAG},latest}"
+            if [[ "$PUSH_LATEST" == "true" ]]; then
+              docker tag "$src" "${dst}:latest"
+              docker push "${dst}:latest"
+              echo "pushed ${dst}:{${TAG},latest}"
+            else
+              echo "pushed ${dst}:${TAG} (latest untouched: ${GITHUB_REF})"
+            fi
           done
 
       - name: Summary

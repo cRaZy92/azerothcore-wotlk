@@ -449,6 +449,27 @@ changes: `AC_MAP_UPDATE_THREADS` (stock AzerothCore ships **1**),
 `DOCKER_DB_BUFFER_POOL` (the mysql image ships **128M**), and the bot count
 itself.
 
+### Why there is an ac-playerbots-sql one-shot
+
+mod-playerbots creates and migrates `acore_playerbots` from inside the
+**worldserver**, not from `ac-db-import` — `dbimport`'s `Main.cpp` only ever
+adds the Login, Character and World pools, so no update mask can make it do
+this. The module reads its SQL from the source tree at
+`/azerothcore/modules/mod-playerbots/data/sql`, and the worldserver image ships
+only the binary. Without help it aborts at startup:
+
+```
+Database Playerbots is empty, auto populating it...
+>> Directory "/azerothcore/modules/mod-playerbots/data/sql/playerbots/base/" not exist
+Could not populate the Playerbots database, see log for details.
+```
+
+The `ac-playerbots-sql` one-shot copies the module sources out of the db-import
+image (which does carry them) into a volume the worldserver mounts read-only at
+that path. It re-runs on every deploy, so the SQL always matches the pinned
+module commit. If you ever see that error again, check whether that one-shot
+exited 0 — `docker logs ac-playerbots-sql` prints how many files it staged.
+
 ### Tuning the bots
 
 All of it is `AC_*` env in Dokploy — the module's `.conf` is not installed, so

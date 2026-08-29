@@ -155,10 +155,12 @@ services:
       - ac-network
     environment:
       <<: [*ac-paths, *ac-db-all]
-      # Bitmask: 1|2|4 = auth|characters|world, 8 = playerbots. The shipped
-      # default is 7, which would leave acore_playerbots uncreated and the
-      # worldserver unable to start with mod-playerbots compiled in.
-      AC_UPDATES_ENABLE_DATABASES: ${AC_UPDATES_ENABLE_DATABASES:-15}
+      # 1|2|4 = auth|characters|world. Bit 8 (playerbots) is deliberately not
+      # set: dbimport's Main only ever adds the Login, Character and World
+      # pools, so it cannot create acore_playerbots whatever mask it is given.
+      # That database is populated by the worldserver itself — see
+      # ac-playerbots-sql below.
+      AC_UPDATES_ENABLE_DATABASES: ${AC_UPDATES_ENABLE_DATABASES:-7}
     volumes:
       - ac-etc:/azerothcore/env/dist/etc
       - ac-logs:/azerothcore/env/dist/logs
@@ -228,6 +230,33 @@ services:
       ac-db-import:
         condition: service_completed_successfully
 
+  # One-shot: mod-playerbots creates and migrates acore_playerbots from inside
+  # the *worldserver*, reading SQL from its source tree at
+  # /azerothcore/modules/mod-playerbots/data/sql. The worldserver image ships
+  # only the binary, so that directory is empty and the worldserver aborts with
+  # "Could not populate the Playerbots database". The db-import image does
+  # carry the module sources (it COPYs modules/), so we stage them into a
+  # volume the worldserver mounts. Re-runs on every deploy, which keeps the SQL
+  # in step with the pinned module.
+  ac-playerbots-sql:
+    container_name: ac-playerbots-sql
+    image: ghcr.io/${GHCR_OWNER:-crazy92}/ac-wotlk-db-import:${AC_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: "no"
+    # The staging volume is created root-owned; the image otherwise runs as acore.
+    user: root
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        src=/azerothcore/modules/mod-playerbots
+        test -d "$$src/data/sql" || { echo "no module sources in this image"; exit 1; }
+        rm -rf /stage/* /stage/.[!.]* 2>/dev/null || true
+        cp -a "$$src/." /stage/
+        echo "staged $$(find /stage/data/sql -name '*.sql' | wc -l) sql files for mod-playerbots"
+    volumes:
+      - ac-playerbots-sql:/stage
+
   ac-authserver:
     container_name: ac-authserver
     image: ghcr.io/${GHCR_OWNER:-crazy92}/ac-wotlk-authserver:${AC_IMAGE_TAG:-latest}
@@ -275,6 +304,9 @@ services:
       - ac-etc:/azerothcore/env/dist/etc
       - ac-logs:/azerothcore/env/dist/logs
       - ac-client-data:/azerothcore/env/dist/data/:ro
+      # Read-only: the worldserver only reads this SQL, it writes results to
+      # the database.
+      - ac-playerbots-sql:/azerothcore/modules/mod-playerbots:ro
     depends_on:
       ac-database:
         condition: service_healthy
@@ -282,10 +314,13 @@ services:
         condition: service_completed_successfully
       ac-client-data-init:
         condition: service_completed_successfully
+      ac-playerbots-sql:
+        condition: service_completed_successfully
 
 volumes:
   ac-database:
   ac-client-data:
+  ac-playerbots-sql:
   ac-etc:
   ac-logs:
 

@@ -434,6 +434,15 @@ before whatever else the CT runs:
 | 300 | ~10-12 GB, 4 cores | most of the world resident; LFG and BGs actually pop |
 | 500+ | 16 GB+, 6 cores | the module's own baseline |
 
+Measured on this CT (6 cores, 32 GB, sharing with the other Docker services):
+**300 bots idle at 40% of 6 cores and 8.2 GB total**. Most of that memory is
+map grids, which are already resident at 300, so the step to 1000 costs session
+and AI state rather than another copy of the world.
+
+Our settings are sized for that box: 1000 bots, `AC_MAP_UPDATE_THREADS=5` (of
+6 cores, leaving one for MySQL and the rest of the CT), `DOCKER_DB_BUFFER_POOL=4G`.
+On a smaller machine, scale all three down together.
+
 CPU shortage does **not** show up as lag for players: `botActiveAloneSmartScale`
 reduces how many bots are actively simulated to hold the world diff inside its
 band, so an undersized CT gives you duller bots rather than a stuttering realm.

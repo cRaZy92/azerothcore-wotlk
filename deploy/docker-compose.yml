@@ -51,7 +51,7 @@ x-ac-world-config: &ac-world-config
   # the single biggest CPU limit once bots roam the whole world; the module's
   # guidance is 4-6, matched to available cores. Raise with the CT's core
   # count, never above it.
-  AC_MAP_UPDATE_THREADS: ${AC_MAP_UPDATE_THREADS:-4}
+  AC_MAP_UPDATE_THREADS: ${AC_MAP_UPDATE_THREADS:-5}
   AC_PLAYERBOTS_DATABASE_WORKER_THREADS: ${AC_PLAYERBOTS_DATABASE_WORKER_THREADS:-1}
   AC_PLAYERBOTS_DATABASE_SYNCH_THREADS: ${AC_PLAYERBOTS_DATABASE_SYNCH_THREADS:-2}
 
@@ -105,8 +105,8 @@ x-ac-world-config: &ac-world-config
   # yards are forced active regardless, which is what makes the world feel
   # populated where you actually are.
   AC_AI_PLAYERBOT_ENABLED: ${AC_AI_PLAYERBOT_ENABLED:-1}
-  AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MIN_RANDOM_BOTS:-300}
-  AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MAX_RANDOM_BOTS:-300}
+  AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MIN_RANDOM_BOTS:-1000}
+  AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MAX_RANDOM_BOTS:-1000}
   AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN: ${AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN:-1}
   # Bots idle out when nobody real is online — this is a home server that runs
   # 24/7 for a handful of people.
@@ -144,7 +144,7 @@ services:
     # module's own guidance is ~50% of RAM on a dedicated box; this CT shares
     # with other services, so 2G is the conservative default.
     command:
-      - --innodb-buffer-pool-size=${DOCKER_DB_BUFFER_POOL:-2G}
+      - --innodb-buffer-pool-size=${DOCKER_DB_BUFFER_POOL:-4G}
     volumes:
       - ac-database:/var/lib/mysql
     restart: unless-stopped

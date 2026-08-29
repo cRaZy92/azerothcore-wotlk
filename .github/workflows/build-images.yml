@@ -1,0 +1,111 @@
+# Builds the four AzerothCore images this fork runs and publishes them to GHCR.
+#
+# This is OUR workflow — upstream's docker_build.yml is left untouched (it
+# self-disables outside azerothcore/azerothcore-wotlk) so upstream syncs stay
+# conflict-free.
+#
+# Images: ghcr.io/<owner>/ac-wotlk-{authserver,worldserver,db-import,client-data}
+# Tags:   latest, sha-<short>
+name: build-images
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  COMPOSE_DOCKER_CLI_BUILD: 1
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  build-and-push:
+    # Never runs upstream, only in forks that opted in.
+    if: github.repository != 'azerothcore/azerothcore-wotlk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      # A full core build plus four images does not fit next to the runner's
+      # preinstalled toolchains.
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h /
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          # The Dockerfile bind-mounts .git during the build (AzerothCore wants
+          # the repo at build time), so a shallow clone is fine but the .git
+          # directory must exist.
+          fetch-depth: 1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image coordinates
+        id: img
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # Uses the repo's own compose build, so the images are exactly what
+      # `docker compose build` produces locally. The four services below are
+      # the ones without a profile; tools/dev-server are deliberately skipped.
+      - name: Build images
+        env:
+          DOCKER_IMAGE_TAG: ${{ steps.img.outputs.tag }}
+        run: |
+          docker compose build \
+            ac-authserver \
+            ac-worldserver \
+            ac-db-import \
+            ac-client-data-init
+          docker image ls
+          df -h /
+
+      - name: Tag and push to GHCR
+        env:
+          OWNER: ${{ steps.img.outputs.owner }}
+          TAG: ${{ steps.img.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for component in authserver worldserver db-import client-data; do
+            src="acore/ac-wotlk-${component}:${TAG}"
+            dst="ghcr.io/${OWNER}/ac-wotlk-${component}"
+            docker tag "$src" "${dst}:${TAG}"
+            docker tag "$src" "${dst}:latest"
+            docker push "${dst}:${TAG}"
+            docker push "${dst}:latest"
+            echo "pushed ${dst}:{${TAG},latest}"
+          done
+
+      - name: Summary
+        env:
+          OWNER: ${{ steps.img.outputs.owner }}
+          TAG: ${{ steps.img.outputs.tag }}
+        run: |
+          {
+            echo "### Images published"
+            echo
+            for component in authserver worldserver db-import client-data; do
+              echo "- \`ghcr.io/${OWNER}/ac-wotlk-${component}:${TAG}\` (also \`:latest\`)"
+            done
+            echo
+            echo "Roll back by setting \`AC_IMAGE_TAG=${TAG}\` in Dokploy and redeploying."
+          } >> "$GITHUB_STEP_SUMMARY"

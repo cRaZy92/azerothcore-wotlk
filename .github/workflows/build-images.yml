@@ -1,8 +1,8 @@
 # Builds the four AzerothCore images this fork runs and publishes them to GHCR.
 #
-# This is OUR workflow — upstream's docker_build.yml is left untouched (it
-# self-disables outside azerothcore/azerothcore-wotlk) so upstream syncs stay
-# conflict-free.
+# This is OUR workflow — the core's own docker_build.yml is left untouched (it
+# self-disables outside mod-playerbots/azerothcore-wotlk) so upstream syncs
+# stay conflict-free.
 #
 # Images: ghcr.io/<owner>/ac-wotlk-{authserver,worldserver,db-import,client-data}
 # Tags:   latest, sha-<short>
@@ -28,8 +28,8 @@ env:
 
 jobs:
   build-and-push:
-    # Never runs upstream, only in forks that opted in.
-    if: github.repository != 'azerothcore/azerothcore-wotlk'
+    # Never runs in the core we forked, only in forks that opted in.
+    if: github.repository != 'mod-playerbots/azerothcore-wotlk'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:

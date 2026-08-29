@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# mysqldump of the two databases that hold state we cannot rebuild:
-# acore_characters (everything players did) and acore_auth (accounts, realm).
-# acore_world is deliberately skipped — ac-db-import recreates it from the
-# repo on every deploy.
+# mysqldump of the databases that hold state we cannot rebuild:
+# acore_characters (everything players did), acore_auth (accounts, realm) and
+# acore_playerbots (selfbot links, custom bot strategies — small, and annoying
+# to lose). acore_world is deliberately skipped — ac-db-import recreates it
+# from the repo on every deploy.
 #
 # This sits on top of the Proxmox Backup Server snapshots of the whole CT; it
 # exists so a single bad SQL update or a botched deploy can be undone without
@@ -26,7 +27,7 @@ BACKUP_DIR="${BACKUP_DIR:-/var/backups/azerothcore}"
 BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 AC_DB_CONTAINER="${AC_DB_CONTAINER:-ac-database}"
 AC_COMPOSE_FILE="${AC_COMPOSE_FILE:-}"
-DATABASES=(acore_characters acore_auth)
+DATABASES=(acore_characters acore_auth acore_playerbots)
 
 if [[ -z "${DOCKER_DB_ROOT_PASSWORD:-}" ]]; then
   echo "DOCKER_DB_ROOT_PASSWORD is not set (put it in ${OPS_ENV_FILE})" >&2

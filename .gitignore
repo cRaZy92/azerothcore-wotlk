@@ -132,6 +132,10 @@ compile_commands.json
 
 # Modules we run (see CLAUDE.md)
 !/modules/mod-autobalance
+!/modules/mod-playerbots
+!/modules/mod-ah-bot
+!/modules/mod-transmog
+!/modules/mod-solo-lfg
 
 # Deployment secrets. Only deploy/.env.example is tracked.
 /deploy/.env

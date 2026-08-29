@@ -1,3 +1,15 @@
 [submodule "modules/mod-autobalance"]
 	path = modules/mod-autobalance
 	url = https://github.com/azerothcore/mod-autobalance
+[submodule "modules/mod-playerbots"]
+	path = modules/mod-playerbots
+	url = https://github.com/mod-playerbots/mod-playerbots
+[submodule "modules/mod-ah-bot"]
+	path = modules/mod-ah-bot
+	url = https://github.com/azerothcore/mod-ah-bot
+[submodule "modules/mod-transmog"]
+	path = modules/mod-transmog
+	url = https://github.com/azerothcore/mod-transmog
+[submodule "modules/mod-solo-lfg"]
+	path = modules/mod-solo-lfg
+	url = https://github.com/azerothcore/mod-solo-lfg

@@ -1,4 +1,9 @@
-# Weekly merge of azerothcore/azerothcore-wotlk master into our master.
+# Weekly merge of our core upstream into our master.
+#
+# That upstream is mod-playerbots/azerothcore-wotlk, branch Playerbot — the
+# AzerothCore fork mod-playerbots requires; plain azerothcore/azerothcore-wotlk
+# does not build the module. That fork merges AzerothCore master itself, so
+# upstream AC fixes still reach us, one hop later.
 #
 # Our footprint outside deploy/, modules/, .gitmodules, CLAUDE.md and our own
 # workflow files is kept near zero so this merge stays clean. A red
@@ -24,7 +29,7 @@ permissions:
 
 jobs:
   sync:
-    if: github.repository != 'azerothcore/azerothcore-wotlk'
+    if: github.repository != 'mod-playerbots/azerothcore-wotlk'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -40,22 +45,22 @@ jobs:
 
       - name: Fetch upstream
         run: |
-          git remote add upstream https://github.com/azerothcore/azerothcore-wotlk.git
-          git fetch --no-tags upstream master
+          git remote add upstream https://github.com/mod-playerbots/azerothcore-wotlk.git
+          git fetch --no-tags upstream Playerbot
 
       - name: Merge upstream/master
         id: merge
         run: |
           set -euo pipefail
-          if git merge-base --is-ancestor upstream/master HEAD; then
-            echo "Already contains upstream/master ($(git rev-parse --short upstream/master))."
+          if git merge-base --is-ancestor upstream/Playerbot HEAD; then
+            echo "Already contains upstream/Playerbot ($(git rev-parse --short upstream/Playerbot))."
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          if ! git merge --no-ff --no-edit upstream/master; then
-            echo "::error::Merge conflict with upstream/master. Resolve locally:"
-            echo "::error::  git fetch upstream master && git merge upstream/master"
+          if ! git merge --no-ff --no-edit upstream/Playerbot; then
+            echo "::error::Merge conflict with upstream/Playerbot. Resolve locally:"
+            echo "::error::  git fetch upstream Playerbot && git merge upstream/Playerbot"
             git merge --abort || true
             exit 1
           fi
@@ -78,7 +83,7 @@ jobs:
       - name: Summary
         run: |
           if [[ '${{ steps.merge.outputs.changed }}' == 'true' ]]; then
-            echo "Merged upstream/master and triggered build-images." >> "$GITHUB_STEP_SUMMARY"
+            echo "Merged upstream/Playerbot and triggered build-images." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Nothing to merge." >> "$GITHUB_STEP_SUMMARY"
           fi

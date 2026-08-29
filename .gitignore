@@ -132,3 +132,8 @@ compile_commands.json
 
 # Modules we run (see CLAUDE.md)
 !/modules/mod-autobalance
+
+# Deployment secrets. Only deploy/.env.example is tracked.
+/deploy/.env
+/deploy/.env.*
+!/deploy/.env.example

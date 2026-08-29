@@ -1,0 +1,231 @@
+# AzerothCore — deployment compose for the friends server.
+#
+# This file is NEVER used to build. Images come from GHCR, built by
+# .github/workflows/build-images.yml on every push to master.
+#
+# Deployed by Dokploy (Compose service, mode "docker-compose", compose path
+# "deploy/docker-compose.yml"). Configuration lives in Dokploy's Environment
+# tab; see .env.example for every variable and its meaning.
+#
+# Plain `docker compose up -d` must bring the whole stack up — no profiles.
+
+# Images are published by .github/workflows/build-images.yml as
+#   ghcr.io/<owner>/ac-wotlk-<component>:{latest,sha-<short>}
+# AC_IMAGE_TAG stays "latest" in normal operation; pin a sha- tag to roll back
+# (see RUNBOOK.md).
+
+x-ac-paths: &ac-paths
+  AC_DATA_DIR: "/azerothcore/env/dist/data"
+  AC_LOGS_DIR: "/azerothcore/env/dist/logs"
+
+x-ac-db-login: &ac-db-login
+  AC_LOGIN_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:?};acore_auth"
+
+x-ac-db-all: &ac-db-all
+  AC_LOGIN_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:?};acore_auth"
+  AC_WORLD_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:?};acore_world"
+  AC_CHARACTER_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:?};acore_characters"
+
+# worldserver.conf overrides. AzerothCore derives the env var name from the
+# conf key (upper snake case, dots become underscores, camelCase splits):
+#   AllowTwoSide.Interaction.Calendar -> AC_ALLOW_TWO_SIDE_INTERACTION_CALENDAR
+# Anything not listed here keeps the shipped default; add a key both here and
+# in .env.example when we start tuning it.
+x-ac-world-config: &ac-world-config
+  AC_REALM_ID: ${AC_REALM_ID:-1}
+
+  # Cross-faction play — the whole point of a small mixed-faction group.
+  AC_ALLOW_TWO_SIDE_ACCOUNTS: ${AC_ALLOW_TWO_SIDE_ACCOUNTS:-1}
+  AC_ALLOW_TWO_SIDE_INTERACTION_CALENDAR: ${AC_ALLOW_TWO_SIDE_INTERACTION_CALENDAR:-1}
+  AC_ALLOW_TWO_SIDE_INTERACTION_CHAT: ${AC_ALLOW_TWO_SIDE_INTERACTION_CHAT:-1}
+  AC_ALLOW_TWO_SIDE_INTERACTION_CHANNEL: ${AC_ALLOW_TWO_SIDE_INTERACTION_CHANNEL:-1}
+  AC_ALLOW_TWO_SIDE_INTERACTION_GROUP: ${AC_ALLOW_TWO_SIDE_INTERACTION_GROUP:-1}
+  AC_ALLOW_TWO_SIDE_INTERACTION_GUILD: ${AC_ALLOW_TWO_SIDE_INTERACTION_GUILD:-1}
+  AC_ALLOW_TWO_SIDE_INTERACTION_ARENA: ${AC_ALLOW_TWO_SIDE_INTERACTION_ARENA:-1}
+  AC_ALLOW_TWO_SIDE_INTERACTION_AUCTION: ${AC_ALLOW_TWO_SIDE_INTERACTION_AUCTION:-1}
+
+  # Rates.
+  AC_RATE_XP_KILL: ${AC_RATE_XP_KILL:-1}
+  AC_RATE_XP_QUEST: ${AC_RATE_XP_QUEST:-1}
+  AC_RATE_XP_QUEST_DF: ${AC_RATE_XP_QUEST_DF:-1}
+  AC_RATE_XP_EXPLORE: ${AC_RATE_XP_EXPLORE:-1}
+  AC_RATE_XP_PET: ${AC_RATE_XP_PET:-1}
+  AC_RATE_DROP_MONEY: ${AC_RATE_DROP_MONEY:-1}
+  AC_RATE_HONOR: ${AC_RATE_HONOR:-1}
+  AC_RATE_REPUTATION_GAIN: ${AC_RATE_REPUTATION_GAIN:-1}
+  AC_RATE_REST_IN_GAME: ${AC_RATE_REST_IN_GAME:-1}
+
+  # Remote console. Published on the LAN only, never forwarded (see ports).
+  AC_SOAP_ENABLED: ${AC_SOAP_ENABLED:-0}
+  AC_SOAP_IP: ${AC_SOAP_IP:-0.0.0.0}
+  AC_SOAP_PORT: ${AC_SOAP_PORT:-7878}
+
+  # mod-autobalance — scales dungeons/raids to the size of the group.
+  AC_AUTO_BALANCE_ENABLE_GLOBAL: ${AC_AUTO_BALANCE_ENABLE_GLOBAL:-1}
+  AC_AUTO_BALANCE_ENABLE_OTHER_NORMAL: ${AC_AUTO_BALANCE_ENABLE_OTHER_NORMAL:-1}
+  AC_AUTO_BALANCE_ENABLE_OTHER_HEROIC: ${AC_AUTO_BALANCE_ENABLE_OTHER_HEROIC:-1}
+  AC_AUTO_BALANCE_MIN_PLAYERS: ${AC_AUTO_BALANCE_MIN_PLAYERS:-1}
+  AC_AUTO_BALANCE_MIN_PLAYERS_HEROIC: ${AC_AUTO_BALANCE_MIN_PLAYERS_HEROIC:-1}
+  AC_AUTO_BALANCE_MIN_PLAYERS_RAID: ${AC_AUTO_BALANCE_MIN_PLAYERS_RAID:-1}
+  AC_AUTO_BALANCE_MIN_PLAYERS_RAID_HEROIC: ${AC_AUTO_BALANCE_MIN_PLAYERS_RAID_HEROIC:-1}
+  AC_AUTO_BALANCE_INFLECTION_POINT: ${AC_AUTO_BALANCE_INFLECTION_POINT:-0.5}
+  AC_AUTO_BALANCE_INFLECTION_POINT_HEROIC: ${AC_AUTO_BALANCE_INFLECTION_POINT_HEROIC:-0.5}
+  AC_AUTO_BALANCE_INFLECTION_POINT_RAID: ${AC_AUTO_BALANCE_INFLECTION_POINT_RAID:-0.5}
+  AC_AUTO_BALANCE_LEVEL_SCALING: ${AC_AUTO_BALANCE_LEVEL_SCALING:-1}
+  AC_AUTO_BALANCE_LEVEL_SCALING_METHOD: ${AC_AUTO_BALANCE_LEVEL_SCALING_METHOD:-dynamic}
+  AC_AUTO_BALANCE_REWARD_SCALING_METHOD: ${AC_AUTO_BALANCE_REWARD_SCALING_METHOD:-dynamic}
+  AC_AUTO_BALANCE_PLAYER_COUNT_DIFFICULTY_OFFSET: ${AC_AUTO_BALANCE_PLAYER_COUNT_DIFFICULTY_OFFSET:-0}
+
+services:
+  ac-database:
+    container_name: ac-database
+    image: mysql:8.4
+    networks:
+      - ac-network
+    # Loopback by default: the CT runs other services, so we neither take
+    # 3306 nor expose the DB to the LAN. backup.sh goes in through
+    # `docker exec ac-database`, not through this port.
+    ports:
+      - "${DOCKER_DB_BIND_IP:-127.0.0.1}:${DOCKER_DB_EXTERNAL_PORT:-13306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DOCKER_DB_ROOT_PASSWORD:?DOCKER_DB_ROOT_PASSWORD must be set}
+    volumes:
+      - ac-database:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: "/usr/bin/mysql --user=root --password=$$MYSQL_ROOT_PASSWORD --execute \"SHOW DATABASES;\""
+      interval: 5s
+      timeout: 10s
+      retries: 40
+
+  # One-shot: creates the three databases if missing and applies every pending
+  # SQL update (core + modules baked into this image). Runs on every deploy.
+  ac-db-import:
+    container_name: ac-db-import
+    image: ghcr.io/${GHCR_OWNER:-crazy92}/ac-wotlk-db-import:${AC_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: "no"
+    networks:
+      - ac-network
+    environment:
+      <<: [*ac-paths, *ac-db-all]
+    volumes:
+      - ac-etc:/azerothcore/env/dist/etc
+      - ac-logs:/azerothcore/env/dist/logs
+    depends_on:
+      ac-database:
+        condition: service_healthy
+
+  # One-shot: downloads maps/vmaps/mmaps/DBC into the shared client-data
+  # volume on first run and exits. Data is NOT baked into the image; the
+  # download is skipped once the volume already holds the right version.
+  ac-client-data-init:
+    container_name: ac-client-data-init
+    image: ghcr.io/${GHCR_OWNER:-crazy92}/ac-wotlk-client-data:${AC_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: "no"
+    networks:
+      - ac-network
+    volumes:
+      - ac-client-data:/azerothcore/env/dist/data
+
+  # One-shot: points the realm at the right addresses. Idempotent.
+  # REALM_ADDRESS is the public host/IP clients connect to, REALM_LOCAL_ADDRESS
+  # the LAN IP of this host, REALM_LOCAL_SUBNET_MASK the LAN mask. `:?` means
+  # the deploy fails loudly rather than silently shipping 127.0.0.1.
+  ac-realmlist-init:
+    container_name: ac-realmlist-init
+    image: mysql:8.4
+    restart: "no"
+    networks:
+      - ac-network
+    environment:
+      MYSQL_PWD: ${DOCKER_DB_ROOT_PASSWORD:?DOCKER_DB_ROOT_PASSWORD must be set}
+      REALM_ID: ${AC_REALM_ID:-1}
+      REALM_NAME: ${REALM_NAME:-AzerothCore}
+      REALM_ADDRESS: ${REALM_ADDRESS:?}
+      REALM_LOCAL_ADDRESS: ${REALM_LOCAL_ADDRESS:?}
+      REALM_LOCAL_SUBNET_MASK: ${REALM_LOCAL_SUBNET_MASK:?}
+      REALM_PORT: ${DOCKER_WORLD_EXTERNAL_PORT:-8085}
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        mysql --host=ac-database --protocol=TCP --user=root acore_auth <<SQL
+        UPDATE realmlist
+           SET name            = '$${REALM_NAME}',
+               address         = '$${REALM_ADDRESS}',
+               localAddress    = '$${REALM_LOCAL_ADDRESS}',
+               localSubnetMask = '$${REALM_LOCAL_SUBNET_MASK}',
+               port            = $${REALM_PORT}
+         WHERE id = $${REALM_ID};
+        SQL
+        echo "realmlist $${REALM_ID}: $${REALM_ADDRESS}:$${REALM_PORT}"
+        echo "  local: $${REALM_LOCAL_ADDRESS}/$${REALM_LOCAL_SUBNET_MASK}"
+    depends_on:
+      ac-db-import:
+        condition: service_completed_successfully
+
+  ac-authserver:
+    container_name: ac-authserver
+    image: ghcr.io/${GHCR_OWNER:-crazy92}/ac-wotlk-authserver:${AC_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    networks:
+      - ac-network
+    tty: true
+    environment:
+      <<: *ac-db-login
+      AC_LOGS_DIR: "/azerothcore/env/dist/logs"
+      AC_TEMP_DIR: "/azerothcore/env/dist/temp"
+    ports:
+      - "${DOCKER_AUTH_EXTERNAL_PORT:-3724}:3724"
+    volumes:
+      - ac-etc:/azerothcore/env/dist/etc
+      - ac-logs:/azerothcore/env/dist/logs
+    depends_on:
+      ac-database:
+        condition: service_healthy
+      ac-db-import:
+        condition: service_completed_successfully
+      ac-realmlist-init:
+        condition: service_completed_successfully
+
+  ac-worldserver:
+    container_name: ac-worldserver
+    image: ghcr.io/${GHCR_OWNER:-crazy92}/ac-wotlk-worldserver:${AC_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    networks:
+      - ac-network
+    # Keeps the worldserver console attachable: `docker attach ac-worldserver`,
+    # detach with Ctrl-P Ctrl-Q. The runbook relies on this.
+    stdin_open: true
+    tty: true
+    environment:
+      <<: [*ac-paths, *ac-db-all, *ac-world-config]
+    ports:
+      - "${DOCKER_WORLD_EXTERNAL_PORT:-8085}:8085"
+      # SOAP stays off the router. Bound to loopback unless deliberately
+      # moved to the LAN IP via DOCKER_SOAP_BIND_IP.
+      - "${DOCKER_SOAP_BIND_IP:-127.0.0.1}:${DOCKER_SOAP_EXTERNAL_PORT:-7878}:7878"
+    volumes:
+      - ac-etc:/azerothcore/env/dist/etc
+      - ac-logs:/azerothcore/env/dist/logs
+      - ac-client-data:/azerothcore/env/dist/data/:ro
+    depends_on:
+      ac-database:
+        condition: service_healthy
+      ac-db-import:
+        condition: service_completed_successfully
+      ac-client-data-init:
+        condition: service_completed_successfully
+
+volumes:
+  ac-database:
+  ac-client-data:
+  ac-etc:
+  ac-logs:
+
+networks:
+  ac-network:

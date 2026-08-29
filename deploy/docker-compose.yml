@@ -37,6 +37,14 @@ x-ac-db-all: &ac-db-all
 x-ac-world-config: &ac-world-config
   AC_REALM_ID: ${AC_REALM_ID:-1}
 
+  # Server threading. Stock AzerothCore ships MapUpdate.Threads = 1, which is
+  # the single biggest CPU limit once bots roam the whole world; the module's
+  # guidance is 4-6, matched to available cores. Raise with the CT's core
+  # count, never above it.
+  AC_MAP_UPDATE_THREADS: ${AC_MAP_UPDATE_THREADS:-4}
+  AC_PLAYERBOTS_DATABASE_WORKER_THREADS: ${AC_PLAYERBOTS_DATABASE_WORKER_THREADS:-1}
+  AC_PLAYERBOTS_DATABASE_SYNCH_THREADS: ${AC_PLAYERBOTS_DATABASE_SYNCH_THREADS:-2}
+
   # Cross-faction play — the whole point of a small mixed-faction group.
   AC_ALLOW_TWO_SIDE_ACCOUNTS: ${AC_ALLOW_TWO_SIDE_ACCOUNTS:-1}
   AC_ALLOW_TWO_SIDE_INTERACTION_CALENDAR: ${AC_ALLOW_TWO_SIDE_INTERACTION_CALENDAR:-1}
@@ -121,6 +129,12 @@ services:
       - "${DOCKER_DB_BIND_IP:-127.0.0.1}:${DOCKER_DB_EXTERNAL_PORT:-13306}:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${DOCKER_DB_ROOT_PASSWORD:?DOCKER_DB_ROOT_PASSWORD must be set}
+    # mysql:8.4 ships a 128 MB buffer pool. The world database alone is far
+    # bigger than that, and playerbots hammer characters/playerbots too. The
+    # module's own guidance is ~50% of RAM on a dedicated box; this CT shares
+    # with other services, so 2G is the conservative default.
+    command:
+      - --innodb-buffer-pool-size=${DOCKER_DB_BUFFER_POOL:-2G}
     volumes:
       - ac-database:/var/lib/mysql
     restart: unless-stopped

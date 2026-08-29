@@ -416,6 +416,39 @@ Expect the first deploy after the swap to be slow twice over: `ac-db-import`
 has a fourth database to build, and the worldserver generates the random bot
 accounts and characters on first start.
 
+### Sizing the box
+
+The module's own guidance, for reference, is written for far bigger servers
+than ours: minimum **16 GB RAM** (it notes 11-12 GB once all map grids are
+loaded) and **4 cores at 3 GHz**, preferring 32 GB and 6+ faster cores.
+
+The number that surprises people is that memory tracks **loaded map grids**
+more than bot count. Bots roaming the whole world pull most of Azeroth into
+memory whether there are 300 of them or 1000, so the jump from 40 to 300 costs
+much less than 7x. Rough targets for this stack, worldserver plus MySQL,
+before whatever else the CT runs:
+
+| Bots | Plan for | Notes |
+|---|---|---|
+| 40-100 | ~6 GB, 2-4 cores | grids stay partly loaded; barely noticeable population |
+| 300 | ~10-12 GB, 4 cores | most of the world resident; LFG and BGs actually pop |
+| 500+ | 16 GB+, 6 cores | the module's own baseline |
+
+CPU shortage does **not** show up as lag for players: `botActiveAloneSmartScale`
+reduces how many bots are actively simulated to hold the world diff inside its
+band, so an undersized CT gives you duller bots rather than a stuttering realm.
+Memory shortage is the one that bites — the worldserver gets OOM-killed.
+
+Verify with `server info` on the worldserver console (or `.server info` in
+game): the module's threshold is latency under 70-80 ms with percentiles
+around 100-150. Above that, drop the bot count or set
+`AC_AI_PLAYERBOT_BOT_ACTIVE_ALONE=10` explicitly.
+
+Three settings in `deploy/` exist for this and are worth revisiting when the CT
+changes: `AC_MAP_UPDATE_THREADS` (stock AzerothCore ships **1**),
+`DOCKER_DB_BUFFER_POOL` (the mysql image ships **128M**), and the bot count
+itself.
+
 ### Tuning the bots
 
 All of it is `AC_*` env in Dokploy — the module's `.conf` is not installed, so

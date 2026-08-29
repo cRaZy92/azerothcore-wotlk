@@ -151,6 +151,18 @@ services:
     command:
       - |
         set -euo pipefail
+
+        # A realm id with no row would make the UPDATE below a silent no-op and
+        # leave the realm advertising 127.0.0.1, so check before writing.
+        rows="$$(mysql --host=ac-database --protocol=TCP --user=root \
+                   --batch --skip-column-names acore_auth \
+                   -e "SELECT COUNT(*) FROM realmlist WHERE id = $${REALM_ID};")"
+        if [[ "$$rows" != "1" ]]; then
+          echo "acore_auth.realmlist has no row with id=$${REALM_ID} (found $$rows)." >&2
+          echo "Check AC_REALM_ID, or add the realm row." >&2
+          exit 1
+        fi
+
         mysql --host=ac-database --protocol=TCP --user=root acore_auth <<SQL
         UPDATE realmlist
            SET name            = '$${REALM_NAME}',

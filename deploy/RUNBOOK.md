@@ -234,12 +234,20 @@ $ docker exec ac-database mysql -uroot -p"$DOCKER_DB_ROOT_PASSWORD" \
     -e "SELECT id,name,address,localAddress,port FROM acore_auth.realmlist;"
 ```
 
-**Expected at worldserver startup:**
-`Config: Could not load .../etc/modules/AutoBalance.conf`. That file is
+**Expected at worldserver startup:** an ERROR line reading
+`> Config::LoadFile: Failed open file
+'/azerothcore/env/dist/etc/modules/AutoBalance.conf'`. That file is
 intentionally absent — module settings come from the `AC_AUTO_BALANCE_*`
 environment variables on top of the module's built-in defaults, exactly as
 intended. Only `AutoBalance.conf.dist` is installed by the build, and nothing
-copies it into place.
+copies it into place; a missing *module* config is logged, never fatal.
+
+**`ac-realmlist-init` exited 1** with `acore_auth.realmlist has no row with
+id=N`: `AC_REALM_ID` points at a realm row that does not exist. The base auth
+DB ships exactly one row, `id=1`. Either set `AC_REALM_ID=1` or insert the row
+you meant. The one-shot refuses to write rather than leave the realm
+advertising `127.0.0.1`, and `ac-authserver` waits on it, so the stack stays
+down until it is fixed.
 
 **Config in general:** every `.conf` key can be set from an `AC_`-prefixed
 environment variable; the name is the key upper-snake-cased, with dots and

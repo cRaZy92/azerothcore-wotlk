@@ -511,7 +511,6 @@ struct boss_yoggsaron_sara : public ScriptedAI
         me->SetDisplayId(me->GetNativeDisplayId());
         me->SetDisableGravity(true);
         me->SetFaction(FACTION_FRIENDLY);
-        me->SetFullHealth();
         me->ClearUnitState(UNIT_STATE_EVADE);
         EnableSara(false);
 
@@ -776,10 +775,10 @@ struct boss_yoggsaron_sara : public ScriptedAI
         if (me->GetHealth() <= damage)
         {
             _secondPhase = true;
-            // leave her at 1 health through the transformation dialogue, the client treats 0 health as dead
-            damage = me->GetHealth() - 1;
+            damage = 0;
 
             events.SetPhase(EVENT_PHASE_TWO);
+            me->SetHealth(me->GetMaxHealth());
             me->SetInCombatWithZone();
             me->SetFaction(FACTION_MONSTER_2);
 
@@ -994,7 +993,6 @@ struct boss_yoggsaron_sara : public ScriptedAI
                 }
             case EVENT_SARA_P2_SPAWN_START_TENTACLES:
                 {
-                    me->SetFullHealth();
                     me->SetOrientation(M_PI);
                     me->SetDisplayId(SARA_TRANSFORM_MODEL);
 
@@ -1816,12 +1814,6 @@ struct boss_yoggsaron_constrictor_tentacle : public ScriptedAI
     {
         if (!apply)
             passenger->RemoveAurasDueToSpell(sSpellMgr->GetSpellIdForDifficulty(SPELL_SQUEEZE, passenger));
-
-        // Prevent players from escaping the tentacle's grasp.
-        constexpr uint32 SPELL_BLINK = 1953;
-        constexpr uint32 SPELL_DEMONIC_CIRCLE_TELEPORT = 48020;
-        passenger->ApplySpellImmune(0, IMMUNITY_ID, SPELL_BLINK, apply);
-        passenger->ApplySpellImmune(0, IMMUNITY_ID, SPELL_DEMONIC_CIRCLE_TELEPORT, apply);
     }
 
     void JustDied(Unit*) override

@@ -2,7 +2,7 @@
 
 ## What this repo is
 
-Fork of `azerothcore/azerothcore-wotlk`. It exists for exactly two reasons:
+Fork of `mod-playerbots/azerothcore-wotlk` (branch `Playerbot`) — the AzerothCore fork that `mod-playerbots` requires; the module does not build against plain `azerothcore/azerothcore-wotlk`. That fork merges AzerothCore master itself, so upstream fixes still reach us, one hop later. It exists for exactly two reasons:
 
 1. Pin the modules we run (as git submodules under `modules/`).
 2. Build our own Docker images in CI and publish them to GHCR.
@@ -26,12 +26,16 @@ Target: a private WotLK 3.3.5a server for a small friend group. Reliability and 
 | Path | Source | Why |
 |---|---|---|
 | `modules/mod-autobalance` | `azerothcore/mod-autobalance` | scales dungeons/raids to group size — required |
+| `modules/mod-playerbots` | `mod-playerbots/mod-playerbots` | simulated players; the reason the core is the Playerbot fork. Keeps its own `acore_playerbots` database |
+| `modules/mod-ah-bot` | `azerothcore/mod-ah-bot` | populates the auction house — needs a one-time bot account, see `deploy/.env.example` |
+| `modules/mod-transmog` | `azerothcore/mod-transmog` | transmogrification NPC; cosmetics only |
+| `modules/mod-solo-lfg` | `azerothcore/mod-solo-lfg` | dungeon finder with fewer than five players; pairs with mod-autobalance |
 
 Add rows as decided. Every module is a submodule pinned to a commit. Bump pins deliberately, one at a time; CI is the gate.
 
 ## Tasks — in order, each green before the next
 
-**Status (2026-08-29):** 1–7 are implemented — `.gitmodules`, `.github/workflows/{build-images,upstream-sync}.yml` and `deploy/`. What is left is the manual half, all of it in `deploy/RUNBOOK.md`: enable Actions in the fork, get one green `build-images` run, set the four GHCR packages public, create the Dokploy service, add the router forwards, install the two cron lines.
+**Status (2026-08-29):** 1–7 are done and the server is live — images build green, Dokploy runs the stack, the realm is up and playable on the LAN. Outstanding: router forwards for 3724/8085 so people outside the LAN can connect (`REALM_ADDRESS` goes back to `adamko.tech` when they are in), and the two cron lines from §5 of the runbook. The core has since been repointed at the Playerbot fork — see §10 of the runbook for what that changed.
 
 1. **Submodules.** Add `mod-autobalance` under `modules/` pinned to a current commit. `git submodule update --init --recursive` must work from a clean clone.
 

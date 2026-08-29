@@ -20,13 +20,15 @@ up once.
 1. **Enable Actions.** Actions tab → *I understand my workflows, go ahead and
    enable them*. Forks ship with Actions disabled.
 
-2. **Silence upstream's workflows.** Every upstream workflow job is already
-   guarded by `github.repository == 'azerothcore/azerothcore-wotlk'`, so in this
-   fork they all skip — except **`add-to-project.yml`**, which has no such guard
-   and fails on every issue for want of a project token. Disable at least that
-   one: Actions → *add-to-project* → `⋯` → **Disable workflow**. Disable the rest
-   the same way if the skipped runs are noise. Do this from the UI, never by
-   editing the files — that keeps upstream merges conflict-free.
+2. **Silence the core's workflows.** Most jobs in the Playerbot fork are guarded
+   by `github.repository == 'mod-playerbots/azerothcore-wotlk'` and skip here,
+   but **five have no guard at all** and fire on every push to our master:
+   `core-build.yml`, `core-build-playerbots.yml`, `macos_build.yml`,
+   `windows_build.yml` (each a full matrix compile) and `add-to-project.yml`
+   (fails on every issue for want of a project token). Disable all five:
+   Actions → the workflow → `⋯` → **Disable workflow**. They cost nothing on a
+   public repo but they bury the one run that matters. Do this from the UI,
+   never by editing the files — that keeps upstream merges conflict-free.
 
 3. **First build.** Push to `master`, or Actions → *build-images* → **Run
    workflow**. The first green run took 21 minutes on a stock `ubuntu-latest`
@@ -268,8 +270,8 @@ want to diff it. If the endpoint ever moves, set only `AC_COMPOSE_FILE`
 falls back to a plain `docker compose pull && up -d` against Dokploy's own
 checkout, which is equivalent for our purposes.
 
-**`backup.sh`** dumps `acore_characters` and `acore_auth` only — `acore_world`
-is rebuilt from the repo by `ac-db-import` on every deploy. It reaches the
+**`backup.sh`** dumps `acore_characters`, `acore_auth` and `acore_playerbots`
+— `acore_world` is rebuilt from the repo by `ac-db-import` on every deploy. It reaches the
 database through `docker exec ac-database` (the pinned container name, stable
 regardless of the project name Dokploy assigns); set `AC_COMPOSE_FILE` to use
 `docker compose exec` instead. This sits on top of the PBS snapshots of the
@@ -323,9 +325,11 @@ or auth databases — for that, restore a dump (§5).
 
 ## 8. Upstream sync
 
-`upstream-sync.yml` merges `azerothcore/azerothcore-wotlk` `master` into ours
-every Monday 01:00 UTC and then triggers *build-images* explicitly (a push made
-with `GITHUB_TOKEN` does not trigger workflows on its own).
+`upstream-sync.yml` merges `mod-playerbots/azerothcore-wotlk` branch
+`Playerbot` into ours every Monday 01:00 UTC and then triggers *build-images*
+explicitly (a push made with `GITHUB_TOKEN` does not trigger workflows on its
+own). That fork merges AzerothCore master on its own schedule, so upstream AC
+fixes reach us one hop later than they used to — the price of playerbots.
 
 - **Merge conflict** → the job fails with the commands to resolve locally. Our
   footprint outside `deploy/`, `modules/`, `.gitmodules`, `CLAUDE.md`,
@@ -389,3 +393,95 @@ dumps), `<appName>_ac-client-data` (re-downloadable, several GB),
 `<appName>_ac-etc` and `<appName>_ac-logs`. Renaming the Dokploy service changes
 `appName` and therefore orphans all four — the DB included. Deleting the `ac-etc`
 volume is safe: the entrypoint repopulates it from the image on next start.
+
+---
+
+## 10. Bots and modules
+
+### What the core swap changed
+
+`master` tracks `mod-playerbots/azerothcore-wotlk` (branch `Playerbot`) instead
+of AzerothCore proper, because `mod-playerbots` does not build against upstream.
+Everything else is untouched: same Dockerfile targets, same four images, same
+compose, same Dokploy service. We still never edit `src/` ourselves — the
+patches live in the core we track.
+
+One structural change: **playerbots keeps a fourth database**,
+`acore_playerbots`. `ac-db-import` creates and migrates it because the compose
+passes `AC_UPDATES_ENABLE_DATABASES=15` (bit 8 = playerbots); the shipped
+default of 7 would silently leave it out and the worldserver would fail to
+start. `backup.sh` dumps it along with characters and auth.
+
+Expect the first deploy after the swap to be slow twice over: `ac-db-import`
+has a fourth database to build, and the worldserver generates the random bot
+accounts and characters on first start.
+
+### Tuning the bots
+
+All of it is `AC_*` env in Dokploy — the module's `.conf` is not installed, so
+these override its *compiled* defaults, which are **500 random bots**. Ours:
+
+| Variable | Ours | Meaning |
+|---|---|---|
+| `AC_AI_PLAYERBOT_MIN_RANDOM_BOTS` / `MAX` | 40 | population of the world. Each bot is a player session — raise while watching RAM |
+| `AC_AI_PLAYERBOT_DISABLED_WITHOUT_REAL_PLAYER` | 1 | bots idle when nobody is online; set 0 for a world that lives 24/7 |
+| `AC_AI_PLAYERBOT_SELF_BOT_LEVEL` | 2 | 0 off, 1 GM only, 2 all players, 3 on login — 2 lets everyone drive their own alts |
+| `AC_AI_PLAYERBOT_RANDOM_BOT_MIN_LEVEL` / `MAX` | 1 / 80 | level spread of the random population |
+
+In game, bots answer to `.bot` (a player-level command, in-game only):
+`.bot add <name>`, `.bot remove <name>`, `.bot init=<level>`. The
+[wiki](https://github.com/mod-playerbots/mod-playerbots/wiki) covers strategies
+and the client addons that give it a UI.
+
+### mod-ah-bot: the one module with a manual step
+
+It posts auctions *as a character*, so it needs an account of its own. Both
+halves are off in code until you give it an account id:
+
+```console
+$ docker attach ac-worldserver
+account create ahbot <password>
+```
+
+Log in on that account, create one character per faction, log out. Then:
+
+```console
+$ docker exec -e MYSQL_PWD="$DOCKER_DB_ROOT_PASSWORD" ac-database \
+    mysql -uroot -e "SELECT id FROM acore_auth.account WHERE username='AHBOT';"
+```
+
+Put that id in `AC_AUCTION_HOUSE_BOT_ACCOUNT`, set
+`AC_AUCTION_HOUSE_BOT_ENABLE_SELLER=1` and `..._ENABLE_BUYER=1`, redeploy.
+Until the id is non-zero the module logs `AHBot: Account id and player id
+missing from configuration` and does nothing. Don't play on that character —
+browsing the AH with it hangs on "Searching for items...".
+
+`mod-transmog` and `mod-solo-lfg` need nothing: their compiled defaults are
+already on.
+
+### Trying a change before it becomes `latest`
+
+*build-images* publishes `latest` only from `master`. Run it by hand on any
+branch (Actions → *build-images* → **Run workflow** → pick the branch) and it
+publishes just that branch's `sha-` tag. Pin that tag in Dokploy
+(`AC_IMAGE_TAG=sha-abc1234`), redeploy, and you are playing the branch while
+`latest` — and therefore the nightly redeploy — still points at the last green
+master build. Merge to master when you like it, set `AC_IMAGE_TAG` back to
+`latest`.
+
+### Adding another module later
+
+One commit each, and CI is the gate:
+
+```console
+$ git submodule add https://github.com/<owner>/<mod-name> modules/<mod-name>
+$ printf '!/modules/<mod-name>\n' >> .gitignore   # modules/* is ignored by default
+$ git add .gitmodules .gitignore modules/<mod-name> && git commit
+```
+
+Push, wait for *build-images* to go green, redeploy. Its SQL is applied
+automatically (`Updates.AllowedModules = "all"`), and its settings come from
+`AC_*` env vars — the name is the conf key upper-snake-cased. Always check the
+module's **compiled** defaults (`GetOption<...>("Key", <default>)` in its
+source), not just its `.conf.dist`: our images install neither, and the two
+disagree more often than you would like — playerbots ships 500 bots in code.

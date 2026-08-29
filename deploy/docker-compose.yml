@@ -25,6 +25,9 @@ x-ac-db-all: &ac-db-all
   AC_LOGIN_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:?};acore_auth"
   AC_WORLD_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:?};acore_world"
   AC_CHARACTER_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:?};acore_characters"
+  # mod-playerbots keeps bot state in a fourth database. The core only compiles
+  # support for it when the module is present (#ifdef MOD_PLAYERBOTS).
+  AC_PLAYERBOTS_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:?};acore_playerbots"
 
 # worldserver.conf overrides. AzerothCore derives the env var name from the
 # conf key (upper snake case, dots become underscores, camelCase splits):
@@ -76,6 +79,31 @@ x-ac-world-config: &ac-world-config
   AC_AUTO_BALANCE_REWARD_SCALING_METHOD: ${AC_AUTO_BALANCE_REWARD_SCALING_METHOD:-dynamic}
   AC_AUTO_BALANCE_PLAYER_COUNT_DIFFICULTY_OFFSET: ${AC_AUTO_BALANCE_PLAYER_COUNT_DIFFICULTY_OFFSET:-0}
 
+  # mod-playerbots. Its .conf is not installed either, and its *compiled*
+  # defaults are 500 random bots — far past what this box should carry — so
+  # the counts below are not optional decoration.
+  AC_AI_PLAYERBOT_ENABLED: ${AC_AI_PLAYERBOT_ENABLED:-1}
+  AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MIN_RANDOM_BOTS:-40}
+  AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MAX_RANDOM_BOTS:-40}
+  AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN: ${AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN:-1}
+  # Bots idle out when nobody real is online — this is a home server that runs
+  # 24/7 for a handful of people.
+  AC_AI_PLAYERBOT_DISABLED_WITHOUT_REAL_PLAYER: ${AC_AI_PLAYERBOT_DISABLED_WITHOUT_REAL_PLAYER:-1}
+  # 0 = off, 1 = GM only, 2 = all players, 3 = on login. 2 lets everyone drive
+  # their own alts as bots.
+  AC_AI_PLAYERBOT_SELF_BOT_LEVEL: ${AC_AI_PLAYERBOT_SELF_BOT_LEVEL:-2}
+  AC_AI_PLAYERBOT_RANDOM_BOT_MIN_LEVEL: ${AC_AI_PLAYERBOT_RANDOM_BOT_MIN_LEVEL:-1}
+  AC_AI_PLAYERBOT_RANDOM_BOT_MAX_LEVEL: ${AC_AI_PLAYERBOT_RANDOM_BOT_MAX_LEVEL:-80}
+
+  # mod-ah-bot. Both halves are off in code until an account id is given; see
+  # .env.example for the one-time account/character setup this needs.
+  AC_AUCTION_HOUSE_BOT_ACCOUNT: ${AC_AUCTION_HOUSE_BOT_ACCOUNT:-0}
+  AC_AUCTION_HOUSE_BOT_ENABLE_SELLER: ${AC_AUCTION_HOUSE_BOT_ENABLE_SELLER:-0}
+  AC_AUCTION_HOUSE_BOT_ENABLE_BUYER: ${AC_AUCTION_HOUSE_BOT_ENABLE_BUYER:-0}
+
+  # mod-transmog and mod-solo-lfg need nothing here: their compiled defaults
+  # are already on (Transmogrification.* and SoloLFG.* default to enabled).
+
 services:
   ac-database:
     container_name: ac-database
@@ -109,6 +137,10 @@ services:
       - ac-network
     environment:
       <<: [*ac-paths, *ac-db-all]
+      # Bitmask: 1|2|4 = auth|characters|world, 8 = playerbots. The shipped
+      # default is 7, which would leave acore_playerbots uncreated and the
+      # worldserver unable to start with mod-playerbots compiled in.
+      AC_UPDATES_ENABLE_DATABASES: ${AC_UPDATES_ENABLE_DATABASES:-15}
     volumes:
       - ac-etc:/azerothcore/env/dist/etc
       - ac-logs:/azerothcore/env/dist/logs

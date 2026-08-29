@@ -1,8 +1,10 @@
 name: pch-build
+
 on:
   push:
     branches:
       - 'master'
+      - 'test-staging'
   pull_request:
     types:
       - opened
@@ -41,7 +43,7 @@ jobs:
               CXX: clang++-21
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }}-${{ matrix.compiler.CC }}-pch
-    if: github.repository == 'azerothcore/azerothcore-wotlk' && !github.event.pull_request.draft
+    if: github.repository == 'mod-playerbots/azerothcore-wotlk' && !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/linux-build
@@ -49,3 +51,4 @@ jobs:
           CC: ${{ matrix.compiler.CC }}
           CXX: ${{ matrix.compiler.CXX }}
           pch: true
+          modules: true   # optional: include modules in PCH build

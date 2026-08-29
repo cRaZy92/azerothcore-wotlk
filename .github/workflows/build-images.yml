@@ -1,8 +1,8 @@
 # Builds the four AzerothCore images this fork runs and publishes them to GHCR.
 #
-# This is OUR workflow — upstream's docker_build.yml is left untouched (it
-# self-disables outside azerothcore/azerothcore-wotlk) so upstream syncs stay
-# conflict-free.
+# This is OUR workflow — the core's own docker_build.yml is left untouched (it
+# self-disables outside mod-playerbots/azerothcore-wotlk) so upstream syncs
+# stay conflict-free.
 #
 # Images: ghcr.io/<owner>/ac-wotlk-{authserver,worldserver,db-import,client-data}
 # Tags:   latest, sha-<short>
@@ -28,8 +28,8 @@ env:
 
 jobs:
   build-and-push:
-    # Never runs upstream, only in forks that opted in.
-    if: github.repository != 'azerothcore/azerothcore-wotlk'
+    # Never runs in the core we forked, only in forks that opted in.
+    if: github.repository != 'mod-playerbots/azerothcore-wotlk'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
@@ -79,20 +79,28 @@ jobs:
           docker image ls
           df -h /
 
+      # `latest` is what the running server pulls, so only master moves it.
+      # A workflow_dispatch build on a branch publishes just its sha- tag,
+      # which you can pin in Dokploy to try a change before promoting it.
       - name: Tag and push to GHCR
         env:
           OWNER: ${{ steps.img.outputs.owner }}
           TAG: ${{ steps.img.outputs.tag }}
+          PUSH_LATEST: ${{ github.ref == 'refs/heads/master' }}
         run: |
           set -euo pipefail
           for component in authserver worldserver db-import client-data; do
             src="acore/ac-wotlk-${component}:${TAG}"
             dst="ghcr.io/${OWNER}/ac-wotlk-${component}"
             docker tag "$src" "${dst}:${TAG}"
-            docker tag "$src" "${dst}:latest"
             docker push "${dst}:${TAG}"
-            docker push "${dst}:latest"
-            echo "pushed ${dst}:{${TAG},latest}"
+            if [[ "$PUSH_LATEST" == "true" ]]; then
+              docker tag "$src" "${dst}:latest"
+              docker push "${dst}:latest"
+              echo "pushed ${dst}:{${TAG},latest}"
+            else
+              echo "pushed ${dst}:${TAG} (latest untouched: ${GITHUB_REF})"
+            fi
           done
 
       - name: Summary

@@ -5086,6 +5086,15 @@ void Player::CleanupChannels()
     }
 }
 
+// Playerbot helper if bot talks in a different locale
+bool Player::IsInChannel(const Channel* c)
+{
+    return std::any_of(m_channels.begin(), m_channels.end(), [c](const Channel* chan)
+    {
+        return c->GetChannelId() == chan->GetChannelId();
+    });
+}
+
 void Player::ClearChannelWatch()
 {
     for (JoinedChannelsList::iterator itr = m_channels.begin(); itr != m_channels.end(); ++itr)
@@ -13148,11 +13157,13 @@ void Player::SetClientControl(Unit* target, bool allowMove, bool packetOnly /*= 
         return;
     }
 
-    // A fleeing/confused target can't be controlled by the client yet, but the mover
-    // must still switch so control is restored once the crowd control ends.
+    // still affected by some aura that shouldn't allow control, only allow on last such aura to be removed
+    if (target->HasUnitState(UNIT_STATE_FLEEING | UNIT_STATE_CONFUSED))
+        allowMove = false;
+
     WorldPacket data(SMSG_CLIENT_CONTROL_UPDATE, target->GetPackGUID().size() + 1);
     data << target->GetPackGUID();
-    data << uint8((allowMove && !target->HasUnitState(UNIT_STATE_FLEEING | UNIT_STATE_CONFUSED)) ? 1 : 0);
+    data << uint8(allowMove ? 1 : 0);
     SendDirectMessage(&data);
 
     // We want to set the packet only

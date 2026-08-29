@@ -20,7 +20,7 @@ jobs:
   triage:
     runs-on: ubuntu-latest
     name: C++
-    if: github.repository == 'azerothcore/azerothcore-wotlk' && !github.event.pull_request.draft
+    if: github.repository == 'mod-playerbots/azerothcore-wotlk' && !github.event.pull_request.draft
     steps:
       - uses: actions/checkout@v7
       - name: Setup python

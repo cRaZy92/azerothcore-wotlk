@@ -1,0 +1,84 @@
+# Weekly merge of azerothcore/azerothcore-wotlk master into our master.
+#
+# Our footprint outside deploy/, modules/, .gitmodules, CLAUDE.md and our own
+# workflow files is kept near zero so this merge stays clean. A red
+# build-images run afterwards is the signal that upstream or a module pin needs
+# attention — it is never a reason to skip a sync.
+name: upstream-sync
+
+on:
+  schedule:
+    # Mondays 01:00 UTC (02:00 CET / 03:00 CEST). The image build that follows
+    # takes about an hour, so fresh images exist well before the 05:00
+    # Europe/Bratislava redeploy window.
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    if: github.repository != 'azerothcore/azerothcore-wotlk'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
+          submodules: false
+
+      - name: Configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/azerothcore/azerothcore-wotlk.git
+          git fetch --no-tags upstream master
+
+      - name: Merge upstream/master
+        id: merge
+        run: |
+          set -euo pipefail
+          if git merge-base --is-ancestor upstream/master HEAD; then
+            echo "Already contains upstream/master ($(git rev-parse --short upstream/master))."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git merge --no-ff --no-edit upstream/master; then
+            echo "::error::Merge conflict with upstream/master. Resolve locally:"
+            echo "::error::  git fetch upstream master && git merge upstream/master"
+            git merge --abort || true
+            exit 1
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          git --no-pager log --oneline -1
+
+      - name: Push
+        if: steps.merge.outputs.changed == 'true'
+        run: git push origin HEAD:master
+
+      # A push made with GITHUB_TOKEN does not trigger other workflows, so the
+      # image build has to be kicked off explicitly.
+      - name: Trigger image build
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run build-images.yml --ref master
+
+      - name: Summary
+        run: |
+          if [[ '${{ steps.merge.outputs.changed }}' == 'true' ]]; then
+            echo "Merged upstream/master and triggered build-images." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Nothing to merge." >> "$GITHUB_STEP_SUMMARY"
+          fi

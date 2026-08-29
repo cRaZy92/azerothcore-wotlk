@@ -79,12 +79,16 @@ x-ac-world-config: &ac-world-config
   AC_AUTO_BALANCE_REWARD_SCALING_METHOD: ${AC_AUTO_BALANCE_REWARD_SCALING_METHOD:-dynamic}
   AC_AUTO_BALANCE_PLAYER_COUNT_DIFFICULTY_OFFSET: ${AC_AUTO_BALANCE_PLAYER_COUNT_DIFFICULTY_OFFSET:-0}
 
-  # mod-playerbots. Its .conf is not installed either, and its *compiled*
-  # defaults are 500 random bots — far past what this box should carry — so
-  # the counts below are not optional decoration.
+  # mod-playerbots. Its .conf is not installed either, so these override its
+  # *compiled* defaults. Population is a RAM question, not a CPU one: only
+  # BotActiveAlone percent of bots are simulated when alone, and
+  # botActiveAloneSmartScale (on by default in code) throttles that to hold
+  # the world diff between 50 and 200 ms. Bots in your zone or within 150
+  # yards are forced active regardless, which is what makes the world feel
+  # populated where you actually are.
   AC_AI_PLAYERBOT_ENABLED: ${AC_AI_PLAYERBOT_ENABLED:-1}
-  AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MIN_RANDOM_BOTS:-40}
-  AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MAX_RANDOM_BOTS:-40}
+  AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MIN_RANDOM_BOTS:-300}
+  AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MAX_RANDOM_BOTS:-300}
   AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN: ${AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN:-1}
   # Bots idle out when nobody real is online — this is a home server that runs
   # 24/7 for a handful of people.

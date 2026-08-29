@@ -12,6 +12,14 @@ on:
   push:
     branches:
       - master
+    # None of these reach inside an image: the compose file and env template
+    # are read by Dokploy straight from git, and docs are docs. Skipping them
+    # saves an hour of runner time per typo fix.
+    paths-ignore:
+      - 'deploy/**'
+      - '**/*.md'
+      - 'LICENSE'
+      - 'AUTHORS'
   workflow_dispatch:
 
 concurrency:

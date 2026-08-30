@@ -108,6 +108,16 @@ x-ac-world-config: &ac-world-config
   AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MIN_RANDOM_BOTS:-1000}
   AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: ${AC_AI_PLAYERBOT_MAX_RANDOM_BOTS:-1000}
   AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN: ${AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN:-1}
+
+  # Percentage of bots actually simulated while alone. This is the dial that
+  # decides whether the world moves, and it is separate from population: at
+  # the module default of 10 only a tenth of the roster does anything when no
+  # player is near. Measured here: 300 bots at 10% gave a 5 ms mean diff on a
+  # 6-core CT, so there was 10x of unused headroom. Smart scale only ever
+  # reduces this number (never raises it), cutting linearly once the max diff
+  # passes 50 ms and reaching zero at 200 ms — so overshooting costs bot
+  # liveliness, not server latency.
+  AC_AI_PLAYERBOT_BOT_ACTIVE_ALONE: ${AC_AI_PLAYERBOT_BOT_ACTIVE_ALONE:-25}
   # Bots idle out when nobody real is online — this is a home server that runs
   # 24/7 for a handful of people.
   AC_AI_PLAYERBOT_DISABLED_WITHOUT_REAL_PLAYER: ${AC_AI_PLAYERBOT_DISABLED_WITHOUT_REAL_PLAYER:-1}

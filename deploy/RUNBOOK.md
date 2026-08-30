@@ -339,6 +339,25 @@ and log in again.
 Worth telling every friend before they connect, because the symptom looks
 exactly like a broken server and is not.
 
+### Low FPS in the world, fine at character select
+
+Also hit here for real. If the character selection screen runs at hundreds of
+FPS and the world crawls — regardless of where you stand or what you point the
+camera at, with the GPU barely working — it is **addons**, not the server and
+not rendering. They load in-world only, which is exactly the shape of the
+symptom.
+
+```console
+$ mv Interface/AddOns Interface/AddOns.off     # then binary-search them back
+```
+
+The reason this bites on *this* server specifically: an addon that iterates
+nearby units, or polls the friends/guild/who list, costs nothing on an empty
+realm and becomes ruinous with several hundred bots online. The bots don't slow
+the client down by themselves — they multiply whatever an addon does per frame.
+Nameplate addons, threat meters and online-tracking addons are the usual
+suspects.
+
 ---
 
 ## 7. Rollback

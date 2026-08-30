@@ -304,6 +304,41 @@ $ gunzip -c /var/backups/azerothcore/acore_characters-20260829-043000.sql.gz \
 If the realm list is empty at the character screen, the client reached the
 authserver but the realm is flagged offline — check that `ac-worldserver` is up.
 
+### Stuck at the end of the loading bar
+
+Symptom: login works, the character list loads, characters can be created — and
+then entering the world hangs forever at a full loading bar, with **nothing in
+the worldserver log**. This is a client data mismatch, and it has been hit here
+for real.
+
+Confirm it is client-side in one query, run right after a failed attempt:
+
+```console
+$ docker exec -e MYSQL_PWD='<password>' ac-database mysql -uroot -e \
+  "SELECT name, online FROM acore_characters.characters WHERE name='<char>';"
+```
+
+`online = 1` means the server completed the login and put the character in the
+world. The server did its job; the client never rendered what it was sent.
+Nothing server-side will fix that.
+
+The cause is almost always a third-party MPQ. A stock 3.3.5a client has exactly
+these, and **nothing else**:
+
+- `Data/`: `common.MPQ`, `common-2.MPQ`, `expansion.MPQ`, `lichking.MPQ`,
+  `patch.MPQ`, `patch-2.MPQ`, `patch-3.MPQ`
+- `Data/enUS/`: `base-enUS.MPQ`, `backup-enUS.MPQ`, `locale-enUS.MPQ`,
+  `speech-enUS.MPQ`, the four `expansion-`/`lichking-` locale and speech files,
+  `patch-enUS.MPQ`, `patch-enUS-2.MPQ`, `patch-enUS-3.MPQ`
+
+Anything else is someone's custom content. The pair that caused this was
+`patch-w.mpq` and `patch-enUS-w.mpq` — Warmane's, which anyone who played there
+will still have. Move them out of the client, delete the `Cache/` directory,
+and log in again.
+
+Worth telling every friend before they connect, because the symptom looks
+exactly like a broken server and is not.
+
 ---
 
 ## 7. Rollback

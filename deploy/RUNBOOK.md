@@ -624,6 +624,14 @@ change, and it had two causes here:
    hours apart. `MIN`/`MAX_RANDOM_BOT_TELEPORT_INTERVAL` are lowered to
    900/3600 to shorten that window.
 
+Both of those relocations are instant teleports, not travel — but
+`RandomTeleport` breaks out without moving the bot when a real player is
+within 150 yards ("prevent blink to be detected by visible real players"), and
+also when the bot is rooted, in a battleground or its queue, or in a group it
+does not lead. So bots never pop out of existence in front of you, and the
+corollary is that the mismatched ones standing next to you are the ones that
+cannot re-sort until you walk away.
+
 What is left after both is genuine transit: `RpgStatusProbWeight.TravelFlight`
 (weight 15) walks bots to the nearest flight master and flies them elsewhere,
 so high-level bots do cross low-level ground. Lower that weight if it bothers

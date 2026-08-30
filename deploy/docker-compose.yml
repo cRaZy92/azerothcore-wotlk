@@ -127,6 +127,47 @@ x-ac-world-config: &ac-world-config
   AC_AI_PLAYERBOT_RANDOM_BOT_MIN_LEVEL: ${AC_AI_PLAYERBOT_RANDOM_BOT_MIN_LEVEL:-1}
   AC_AI_PLAYERBOT_RANDOM_BOT_MAX_LEVEL: ${AC_AI_PLAYERBOT_RANDOM_BOT_MAX_LEVEL:-80}
 
+  # Level distribution. Each bot rolls its level exactly once, in
+  # RandomPlayerbotMgr::RandomizeFirst: MaxLevelChance to land on
+  # RandomBotMaxLevel, MinLevelChance on RandomBotMinLevel, otherwise uniform
+  # between the two. The periodic re-randomize deliberately does not touch
+  # level (IncreaseLevel is commented out), so a bot only climbs by earning
+  # XP while it is one of the BotActiveAlone percent being simulated. Over
+  # 1-80 that is ~10 bots per level across both factions and the whole map --
+  # invisible next to you -- plus a tenth of the roster parked at 80. Both
+  # end chances are zeroed here so the roll is a clean uniform spread.
+  AC_AI_PLAYERBOT_RANDOM_BOT_MIN_LEVEL_CHANCE: ${AC_AI_PLAYERBOT_RANDOM_BOT_MIN_LEVEL_CHANCE:-0}
+  AC_AI_PLAYERBOT_RANDOM_BOT_MAX_LEVEL_CHANCE: ${AC_AI_PLAYERBOT_RANDOM_BOT_MAX_LEVEL_CHANCE:-0}
+
+  # Caps the level of newly randomized bots at the highest level any real
+  # player has reached this uptime, plus 3. Off by default because it is a
+  # ratchet -- it only ever rises, resets on worldserver restart, and never
+  # touches bots that already exist. Level brackets below are the mechanism
+  # that reshapes the population you already have.
+  AC_AI_PLAYERBOT_SYNC_LEVEL_WITH_PLAYERS: ${AC_AI_PLAYERBOT_SYNC_LEVEL_WITH_PLAYERS:-0}
+
+  # Level brackets (RandomBotLevelMgr, in-tree in this fork -- no extra module
+  # needed). Every CheckFrequency seconds it re-levels bots through
+  # PlayerbotFactory, in both directions, until the population matches the
+  # bracket percentages. Dynamic distribution ignores the static per-bracket
+  # percentages and instead weights brackets toward where real players are;
+  # the module's own docs recommend a weight of 10-15 for solo play, which is
+  # the difference between "ten bots somewhere at my level" and a starting
+  # zone that looks inhabited. Brackets are clamped to
+  # RandomBotMinLevel..RandomBotMaxLevel, so lowering the max is how you keep
+  # the whole world inside your band while levelling.
+  AC_AI_PLAYERBOT_LEVEL_BRACKETS_ENABLED: ${AC_AI_PLAYERBOT_LEVEL_BRACKETS_ENABLED:-1}
+  AC_AI_PLAYERBOT_LEVEL_BRACKETS_CHECK_FREQUENCY: ${AC_AI_PLAYERBOT_LEVEL_BRACKETS_CHECK_FREQUENCY:-300}
+  AC_AI_PLAYERBOT_LEVEL_BRACKETS_DYNAMIC_USE_DYNAMIC_DISTRIBUTION: ${AC_AI_PLAYERBOT_LEVEL_BRACKETS_DYNAMIC_USE_DYNAMIC_DISTRIBUTION:-1}
+  AC_AI_PLAYERBOT_LEVEL_BRACKETS_DYNAMIC_REAL_PLAYER_WEIGHT: ${AC_AI_PLAYERBOT_LEVEL_BRACKETS_DYNAMIC_REAL_PLAYER_WEIGHT:-12.0}
+  AC_AI_PLAYERBOT_LEVEL_BRACKETS_DYNAMIC_SYNC_FACTIONS: ${AC_AI_PLAYERBOT_LEVEL_BRACKETS_DYNAMIC_SYNC_FACTIONS:-1}
+
+  # One-shot bot wipe. Set to 1, redeploy, wait for "Deleting all random bot
+  # characters and accounts..." in the worldserver log, then set back to 0 and
+  # redeploy again to regenerate the roster from scratch. The only way to
+  # re-roll levels for bots that already exist without waiting for brackets.
+  AC_AI_PLAYERBOT_DELETE_RANDOM_BOT_ACCOUNTS: ${AC_AI_PLAYERBOT_DELETE_RANDOM_BOT_ACCOUNTS:-0}
+
   # mod-ah-bot. Both halves are off in code until an account id is given; see
   # .env.example for the one-time account/character setup this needs.
   AC_AUCTION_HOUSE_BOT_ACCOUNT: ${AC_AUCTION_HOUSE_BOT_ACCOUNT:-0}

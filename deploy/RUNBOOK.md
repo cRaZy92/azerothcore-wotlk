@@ -540,7 +540,7 @@ these override its *compiled* defaults, which are **500 random bots**. Ours:
 
 | Variable | Ours | Meaning |
 |---|---|---|
-| `AC_AI_PLAYERBOT_MIN_RANDOM_BOTS` / `MAX` | 40 | population of the world. Each bot is a player session — raise while watching RAM |
+| `AC_AI_PLAYERBOT_MIN_RANDOM_BOTS` / `MAX` | 1000 | population of the world. Each bot is a player session — raise while watching RAM |
 | `AC_AI_PLAYERBOT_DISABLED_WITHOUT_REAL_PLAYER` | 1 | bots idle when nobody is online; set 0 for a world that lives 24/7 |
 | `AC_AI_PLAYERBOT_SELF_BOT_LEVEL` | 2 | 0 off, 1 GM only, 2 all players, 3 on login — 2 lets everyone drive their own alts |
 | `AC_AI_PLAYERBOT_RANDOM_BOT_MIN_LEVEL` / `MAX` | 1 / 80 | level spread of the random population |
@@ -549,6 +549,57 @@ In game, bots answer to `.bot` (a player-level command, in-game only):
 `.bot add <name>`, `.bot remove <name>`, `.bot init=<level>`. The
 [wiki](https://github.com/mod-playerbots/mod-playerbots/wiki) covers strategies
 and the client addons that give it a UI.
+
+### Nobody is ever my level
+
+Expected, and it is a distribution problem rather than a bug. A bot rolls its
+level exactly once, when it is first randomized
+(`RandomPlayerbotMgr::RandomizeFirst`): `RandomBotMaxLevelChance` (10% in the
+module's defaults) to land exactly on `RandomBotMaxLevel`,
+`RandomBotMinLevelChance` (another 10%) to land on `RandomBotMinLevel`, and
+otherwise uniform between the two. Death Knights are forced to 55 or above, so
+a further tenth of the roster starts in the 55-80 band.
+
+Nothing re-rolls that number afterwards. The periodic re-randomize, every 2 h
+to 14 days per bot, re-gears a bot *at its current level* — the `IncreaseLevel`
+call inside it is commented out upstream. Bots climb only by earning XP, and
+only while they are among the `BotActiveAlone` percent actually being
+simulated, with a real player online.
+
+So 1000 bots over levels 1-80 is about ten bots per level, split across two
+factions and every zone in the game: statistically invisible. What you *do*
+notice is the ~100 bots parked at 80, because they congregate in cities, and
+whatever wanders past you.
+
+Two fixes, and they work at different times:
+
+- **Level brackets** (`AC_AI_PLAYERBOT_LEVEL_BRACKETS_ENABLED=1`) re-level bots
+  that already exist, up or down, every `CheckFrequency` seconds until the
+  population matches the bracket shares. With
+  `..._DYNAMIC_USE_DYNAMIC_DISTRIBUTION=1` and
+  `..._DYNAMIC_REAL_PLAYER_WEIGHT=12`, bots pile into whichever bracket you are
+  standing in. This is the one that fixes today's world, and it is built into
+  this playerbots fork — the standalone `mod-player-bot-level-brackets` module
+  is not needed.
+- **`AC_AI_PLAYERBOT_SYNC_LEVEL_WITH_PLAYERS=1`** caps *newly* randomized bots
+  at the highest level a real player has reached this uptime, plus 3. It never
+  touches existing bots, and the cap only ratchets upward until the worldserver
+  restarts.
+
+To hold the entire world inside your band while levelling, lower
+`AC_AI_PLAYERBOT_RANDOM_BOT_MAX_LEVEL` (say to your level + 10) and raise it as
+you go: it clamps the brackets too — out-of-range brackets are dropped to 0%
+and the rest rebalanced to 100.
+
+Levels are re-rolled from scratch only by wiping the roster: set
+`AC_AI_PLAYERBOT_DELETE_RANDOM_BOT_ACCOUNTS=1`, redeploy, wait for `Deleting
+all random bot characters and accounts...` in the worldserver log, set it back
+to 0 and redeploy again.
+
+A note on immersion in starting zones: brackets change bot *levels*, and bots
+are teleported to places that suit their level, so more low-level bots does
+mean a busier Elwynn or Durotar. It will not stop level 80s passing through —
+the capitals are next door and bots run flight paths and city errands.
 
 ### mod-ah-bot: the one module with a manual step
 

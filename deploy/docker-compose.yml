@@ -168,6 +168,31 @@ x-ac-world-config: &ac-world-config
   # re-roll levels for bots that already exist without waiting for brackets.
   AC_AI_PLAYERBOT_DELETE_RANDOM_BOT_ACCOUNTS: ${AC_AI_PLAYERBOT_DELETE_RANDOM_BOT_ACCOUNTS:-0}
 
+  # Keeping bots in zones that match their level. The module already sorts
+  # destinations: the per-level hub lists are built from
+  # AiPlayerbot.ZoneBracket.<zoneId> (Elwynn and Durotar are 5-12, Storm Peaks
+  # 77-80), and city banker trips are hard-split in TravelMgr -- levels 1-60
+  # go to the base-game capitals, 61-70 to Shattrath, 71+ to Dalaran. So a
+  # level 80 is never *sent* to a starter zone.
+  #
+  # What the module does not do out of the box is move a bot when its level
+  # changes. playerbots.conf.dist documents AutoTeleportForLevel as
+  # "Default: 1 (enabled)", but the compiled default is false and that .conf
+  # is not installed in our image -- so on this server it was off, and a bot
+  # that levelled from 8 to 25 in Elwynn simply stayed there. The level
+  # brackets above make that worse: AdjustBotToRange re-levels a bot in place
+  # and never teleports it. Turning the level-up teleport on is what closes
+  # the gap.
+  AC_AI_PLAYERBOT_AUTO_TELEPORT_FOR_LEVEL: ${AC_AI_PLAYERBOT_AUTO_TELEPORT_FOR_LEVEL:-1}
+
+  # Backstop for the above: how often a bot is repositioned for its level
+  # regardless of what it has been doing. The module defaults to 1-5 hours,
+  # which is how long a mismatched bot can loiter. Shorter re-sorts faster but
+  # loads more grids, and continent grids never unload while the worldserver
+  # runs (see RUNBOOK section 10) -- so this trades RAM for tidiness.
+  AC_AI_PLAYERBOT_MIN_RANDOM_BOT_TELEPORT_INTERVAL: ${AC_AI_PLAYERBOT_MIN_RANDOM_BOT_TELEPORT_INTERVAL:-900}
+  AC_AI_PLAYERBOT_MAX_RANDOM_BOT_TELEPORT_INTERVAL: ${AC_AI_PLAYERBOT_MAX_RANDOM_BOT_TELEPORT_INTERVAL:-3600}
+
   # mod-ah-bot. Both halves are off in code until an account id is given; see
   # .env.example for the one-time account/character setup this needs.
   AC_AUCTION_HOUSE_BOT_ACCOUNT: ${AC_AUCTION_HOUSE_BOT_ACCOUNT:-0}

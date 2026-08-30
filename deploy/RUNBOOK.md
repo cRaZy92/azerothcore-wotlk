@@ -596,10 +596,39 @@ Levels are re-rolled from scratch only by wiping the roster: set
 all random bot characters and accounts...` in the worldserver log, set it back
 to 0 and redeploy again.
 
-A note on immersion in starting zones: brackets change bot *levels*, and bots
-are teleported to places that suit their level, so more low-level bots does
-mean a busier Elwynn or Durotar. It will not stop level 80s passing through —
-the capitals are next door and bots run flight paths and city errands.
+### Level 80s standing around in starter zones
+
+Destination choice is already level-aware, in two independent places:
+
+- Per-level hub lists (innkeepers and flight masters) are built from
+  `AiPlayerbot.ZoneBracket.<zoneId>` — Elwynn Forest and Durotar are `5,12`,
+  The Storm Peaks is `77,80`. A level 80's hub list contains Northrend zones
+  and nothing else. Requires `EnableNewRpgStrategy`, whose compiled default is
+  on.
+- Banker trips are split in `TravelMgr::PrepareDestinationCache`: levels 1-60
+  get the base-game capitals, 61-70 Shattrath, 71+ Dalaran only.
+
+So nothing ever *sends* an 80 to Northshire. The gap is movement after a level
+change, and it had two causes here:
+
+1. `AiPlayerbot.AutoTeleportForLevel` is documented in
+   `playerbots.conf.dist` as `Default: 1 (enabled)`, but the compiled default
+   is `false`. We run without that `.conf` — every playerbots setting on this
+   server is an `AC_*` override of a *compiled* default — so the level-up
+   teleport was off, and a bot that levelled from 8 to 25 in Elwynn stayed in
+   Elwynn. `AC_AI_PLAYERBOT_AUTO_TELEPORT_FOR_LEVEL=1` fixes it.
+2. Level brackets re-level bots **in place**: `AdjustBotToRange` runs the bot
+   through `PlayerbotFactory` at the new level and never teleports. So
+   enabling brackets increases the number of mismatched bots standing around
+   until their next scheduled reposition — which the module spaces 1 to 5
+   hours apart. `MIN`/`MAX_RANDOM_BOT_TELEPORT_INTERVAL` are lowered to
+   900/3600 to shorten that window.
+
+What is left after both is genuine transit: `RpgStatusProbWeight.TravelFlight`
+(weight 15) walks bots to the nearest flight master and flies them elsewhere,
+so high-level bots do cross low-level ground. Lower that weight if it bothers
+you. Shortening the teleport interval further is possible but costs RAM —
+continent grids never unload while the worldserver runs.
 
 ### mod-ah-bot: the one module with a manual step
 
